@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
-	"time"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -13,7 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func handlePing(client *whatsmeow.Client, msg *events.Message) {
+func handlePing(client *whatsmeow.Client, msg *events.Message, jobs chan<- DownloadJob) {
 	text := extractTextFromMsg(msg)
 	if text == "" {
 		fmt.Println("[DEBUG] no text in ping handler")
@@ -28,7 +26,7 @@ func handlePing(client *whatsmeow.Client, msg *events.Message) {
 
 }
 
-func handleDownload(client *whatsmeow.Client, msg *events.Message) {
+func handleDownload(client *whatsmeow.Client, msg *events.Message, jobs chan<- DownloadJob) {
 	text := extractTextFromMsg(msg)
 	if text == "" {
 		fmt.Println("[DEBUG] no text in download handler")
@@ -56,81 +54,17 @@ func handleDownload(client *whatsmeow.Client, msg *events.Message) {
 	}
 
 	waitMsg := "Mohon tunggu sebentar...\n\nBot hanya support 720p untuk sementara"
-	sendRespondMsgAsync(client, msg, waitMsg)
+	resp, _ := client.SendMessage(context.Background(), msg.Info.Chat, &waE2E.Message{
+		Conversation: proto.String(waitMsg),
+	})
 
-	go func() {
-		start := time.Now()
-		defer func() {
-			dur := time.Since(start)
-			fmt.Printf("[METRICS] goroutine total execution time: %s\n", dur)
-		}()
+	newJob := DownloadJob{
+		UserInfo:     msg.Info,
+		VideoURL:     parts[1],
+		InitialMsgID: resp.ID,
+	}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
+	jobs <- newJob
 
-		videoURL := parts[1]
-		info, err := getVideoInfo(videoURL)
-		if err != nil {
-			fmt.Printf("[ERR] error getting video info: %v\n", err)
-			return
-		}
-
-		if info.Duration > 300 {
-			fmt.Printf("[DEBUG] video info duration: %v\n", info.Duration)
-			sendRespondMsgAsync(client, msg, "durasi video melebihi limit WhatsApp")
-			return
-		}
-
-		filePath, err := youtubeVideoDownload(ctx, videoURL)
-		if err != nil {
-			sendRespondMsgAsync(client, msg, fmt.Sprintf("Error download: %v", err))
-			return
-		}
-		defer os.Remove(filePath)
-
-		var thumbnailData []byte
-		if info.Thumbnail != "" {
-			fmt.Println("[DEBUG] creating thumbnail from URL: ", info.Thumbnail)
-			thumbnailData, err = getVideoThumbnail(info.Thumbnail)
-			if err != nil {
-				fmt.Printf("[DEBUG] failed to create thumbnail from URL: %v\n", err)
-			}
-		} else {
-			fmt.Println("[DEBUG] No thumbnail URL found in the video")
-		}
-
-		data, err := os.ReadFile(filePath)
-		if err != nil {
-			sendRespondMsgAsync(client, msg, "Gagal baca file video")
-			return
-		}
-
-		uploaded, err := client.Upload(context.Background(), data, whatsmeow.MediaVideo)
-		if err != nil {
-			sendRespondMsgAsync(client, msg, "error saat proses download")
-			return
-		}
-
-		videoMessage := &waE2E.Message{
-			VideoMessage: &waE2E.VideoMessage{
-				URL:           proto.String(uploaded.URL),
-				DirectPath:    proto.String(uploaded.DirectPath),
-				Mimetype:      proto.String("video/mp4"),
-				FileEncSHA256: uploaded.FileEncSHA256,
-				FileSHA256:    uploaded.FileSHA256,
-				FileLength:    proto.Uint64(uploaded.FileLength),
-				MediaKey:      uploaded.MediaKey,
-				Caption:       proto.String(fmt.Sprintf("%s\n\n%s", info.Title, videoURL)),
-				Seconds:       proto.Uint32(uint32(info.Duration)),
-				JPEGThumbnail: thumbnailData,
-			},
-		}
-
-		_, err = client.SendMessage(context.Background(), msg.Info.Chat, videoMessage)
-		if err != nil {
-			fmt.Printf("[ERR] gagal mengirim pesan video: %s\n", err)
-		} else {
-			fmt.Printf("[INFO] sukses mengirim pesan video: %s\n", info.Title)
-		}
-	}()
+	fmt.Printf("[HANDLER] Job for %s queued\n", msg.Info.Chat.User)
 }

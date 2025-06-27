@@ -8,18 +8,22 @@ import (
 )
 
 func main() {
-	config, err := LoadConfig()
-	if err != nil {
-		fmt.Printf("Failed to load config: %v\n", err)
-	}
+	// config, err := LoadConfig()
+	// if err != nil {
+	// 	fmt.Printf("Failed to load config: %v\n", err)
+	// }
 
-	wa, err := NewWhatsAppConnection(config)
+	wa, err := NewWhatsAppConnection("whatsapp.db")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error inisialisasi client: %v\n", err)
 		os.Exit(1)
 	}
 
-	router := NewCommandRouter(wa.Client)
+	jobsChannel := make(chan DownloadJob, 50)
+
+	go StartDownloadWorker(wa.Client, jobsChannel)
+
+	router := NewCommandRouter(wa.Client, jobsChannel)
 
 	router.Register("!ping", handlePing)
 	router.Register("!download", handleDownload)

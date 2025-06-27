@@ -6,6 +6,7 @@ import (
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
 )
@@ -43,4 +44,10 @@ func sendRespondMsgAsync(client *whatsmeow.Client, msg *events.Message, text str
 		fmt.Printf("[INFO] pesan terkirim ke %s: ID=%s, Timestamp=%v\n", msg.Info.Chat.String(), resp.ID, resp.Timestamp)
 
 	}()
+}
+
+func sendWorkerMessage(client *whatsmeow.Client, to types.JID, text string) {
+	_, _ = client.SendMessage(context.Background(), to, &waE2E.Message{
+		Conversation: proto.String(text),
+	})
 }

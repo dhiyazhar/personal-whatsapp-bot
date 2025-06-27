@@ -8,16 +8,18 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 )
 
-type CommandFunc func(client *whatsmeow.Client, msg *events.Message)
+type CommandFunc func(client *whatsmeow.Client, msg *events.Message, jobs chan<- DownloadJob)
 
 type CommandRouter struct {
 	client   *whatsmeow.Client
+	jobs     chan<- DownloadJob
 	commands map[string]CommandFunc
 }
 
-func NewCommandRouter(client *whatsmeow.Client) *CommandRouter {
+func NewCommandRouter(client *whatsmeow.Client, jobs chan<- DownloadJob) *CommandRouter {
 	return &CommandRouter{
 		client:   client,
+		jobs:     jobs,
 		commands: make(map[string]CommandFunc),
 	}
 }
@@ -45,5 +47,5 @@ func (r *CommandRouter) Handle(msg *events.Message) {
 		return
 	}
 
-	handler(r.client, msg)
+	handler(r.client, msg, r.jobs)
 }

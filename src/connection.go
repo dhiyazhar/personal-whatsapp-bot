@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal/v3"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -16,11 +16,11 @@ type WhatsAppConnection struct {
 	Client *whatsmeow.Client
 }
 
-func NewWhatsAppConnection(config *DatabaseConfig) (*WhatsAppConnection, error) {
+func NewWhatsAppConnection(dbPath string) (*WhatsAppConnection, error) {
 	dbLog := waLog.Stdout("Client", "INFO", true)
 	ctx := context.Background()
 
-	container, err := sqlstore.New(ctx, "pgx", config.GetConnectionString(), dbLog)
+	container, err := sqlstore.New(ctx, "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", dbPath), dbLog)
 	if err != nil {
 		panic(err)
 	}
